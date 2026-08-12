@@ -71,6 +71,18 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Install the SQL Server ODBC driver
+        # pyodbc is only a wrapper — it needs the actual driver on the host, and
+        # the GitHub runner image doesn't ship it. Installing from Microsoft's
+        # own apt repository is the supported route.
+        run: |
+          curl -sSL -O "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+          sudo dpkg -i packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
+          sudo apt-get update -qq
+          sudo ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18 unixodbc
+          odbcinst -q -d
+
       - name: Install dependencies
         working-directory: backend
         run: uv sync --frozen --no-dev

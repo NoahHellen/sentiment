@@ -85,7 +85,8 @@
 <div class="wrap">
   <h1>Sentiment</h1>
   <p class="sub">Submit a batch of URLs. The API records them and returns immediately —
-     fetching and enrichment happen behind it, so this page polls to watch the work drain.</p>
+     fetching and enrichment happen behind it, so this page polls to watch the work drain.
+     Nothing to install and no key needed: edit the list below and press Submit.</p>
 
   <div id="banner"></div>
 
@@ -136,10 +137,15 @@ const SAMPLE = [
 const BUSY = ["fetching", "fetched", "enriching"];
 const ORDER = ["pending", "fetching", "fetched", "enriching", "done", "failed"];
 
+// The deployed API. A first-time visitor should be able to hit Submit without
+// changing anything; the field stays editable so you can point it at
+// http://127.0.0.1:8000 during development (that choice is remembered locally).
+const DEFAULT_API = "https://sentiment-api.azurewebsites.net";
+
 const $ = (id) => document.getElementById(id);
 let timer = null, started = 0;
 
-$("api").value = localStorage.getItem("sentiment-api") || "http://127.0.0.1:8000";
+$("api").value = localStorage.getItem("sentiment-api") || DEFAULT_API;
 $("urls").value = SAMPLE.join("\n");
 $("api").addEventListener("input", syncDocsLink);
 syncDocsLink();
