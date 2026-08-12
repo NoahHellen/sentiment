@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Yantra — batch URL enrichment</title>
+<title>Sentiment — batch URL enrichment</title>
 <style>
   :root {
     --bg: #fbfbfa; --panel: #fff; --ink: #1c1b19; --muted: #6b6862;
@@ -83,7 +83,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Yantra</h1>
+  <h1>Sentiment</h1>
   <p class="sub">Submit a batch of URLs. The API records them and returns immediately —
      fetching and enrichment happen behind it, so this page polls to watch the work drain.</p>
 
@@ -91,7 +91,7 @@
 
   <div class="panel">
     <label for="api">API base URL</label>
-    <input id="api" type="text" placeholder="https://yantra-api.azurewebsites.net">
+    <input id="api" type="text" placeholder="https://sentiment-api.azurewebsites.net">
 
     <div style="margin-top:16px">
       <label for="urls">URLs — one per line</label>
@@ -139,7 +139,7 @@ const ORDER = ["pending", "fetching", "fetched", "enriching", "done", "failed"];
 const $ = (id) => document.getElementById(id);
 let timer = null, started = 0;
 
-$("api").value = localStorage.getItem("yantra-api") || "http://127.0.0.1:8000";
+$("api").value = localStorage.getItem("sentiment-api") || "http://127.0.0.1:8000";
 $("urls").value = SAMPLE.join("\n");
 $("api").addEventListener("input", syncDocsLink);
 syncDocsLink();
@@ -279,7 +279,7 @@ function escapeHtml(value) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-$("api").addEventListener("change", () => localStorage.setItem("yantra-api", base()));
+$("api").addEventListener("change", () => localStorage.setItem("sentiment-api", base()));
 </script>
 </body>
 </html>

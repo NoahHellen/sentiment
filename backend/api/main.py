@@ -16,7 +16,7 @@ from database.session import engine, get_db
 from services.settings import get_worker_settings
 from services.worker import Pipeline
 
-log = logging.getLogger("yantra.api")
+log = logging.getLogger("sentiment.api")
 
 
 @asynccontextmanager
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
             await task
 
 
-app = FastAPI(title="Yantra API", lifespan=lifespan)
+app = FastAPI(title="Sentiment API", lifespan=lifespan)
 
 _api_settings = get_api_settings()
 

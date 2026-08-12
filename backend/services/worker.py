@@ -30,7 +30,7 @@ from services.queue import (
 )
 from services.settings import WorkerSettings, get_worker_settings
 
-log = logging.getLogger("yantra.worker")
+log = logging.getLogger("sentiment.worker")
 
 
 @dataclass(frozen=True, slots=True)

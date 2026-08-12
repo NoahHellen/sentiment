@@ -43,7 +43,7 @@ class WorkerSettings(BaseSettings):
     max_redirects: int = 5
     max_response_bytes: int = 5_000_000
     max_text_chars: int = 20_000
-    user_agent: str = "yantra-enricher/0.1 (+https://example.invalid/bot)"
+    user_agent: str = "sentiment-enricher/0.1 (+https://example.invalid/bot)"
     # Off by default: a fetcher that will follow a URL to 169.254.169.254 is an
     # SSRF hole. Only enable to point the pipeline at a local test server.
     allow_private_hosts: bool = False
