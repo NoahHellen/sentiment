@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yantra — batch URL enrichment</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --panel: #fff; --ink: #1c1b19; --muted: #6b6862;
+    --line: #e4e1db; --accent: #2f6f4e; --pending: #c9c5bd; --busy: #d99b34;
+    --done: #2f6f4e; --failed: #b4443a; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a; --panel: #1e1e24; --ink: #eceae5; --muted: #97938c;
+      --line: #32323a; --accent: #6aab86; --pending: #4a4a53; --busy: #e0ab53;
+      --done: #6aab86; --failed: #d97a6f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 18px; margin-bottom: 18px;
+  }
+  label { display: block; font-size: 12px; text-transform: uppercase;
+          letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], textarea {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 13px;
+  }
+  textarea { min-height: 132px; resize: vertical; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  button {
+    background: var(--accent); color: #fff; border: 0; border-radius: 7px;
+    padding: 9px 18px; font-size: 14px; font-weight: 550; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .hint { color: var(--muted); font-size: 13px; }
+
+  .bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden;
+         background: var(--line); margin: 4px 0 14px; }
+  .bar span { transition: width .35s ease; }
+  .seg-done { background: var(--done); }
+  .seg-failed { background: var(--failed); }
+  .seg-busy { background: var(--busy); }
+  .seg-pending { background: var(--pending); }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .chip { font-size: 12px; font-family: var(--mono); padding: 3px 9px;
+          border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
+  .chip b { color: var(--ink); font-weight: 600; }
+  .chip.on { border-color: currentColor; }
+  .chip.done { color: var(--done); } .chip.failed { color: var(--failed); }
+  .chip.busy { color: var(--busy); }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 640px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+       color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.url { font-family: var(--mono); font-size: 12px; max-width: 250px;
+           overflow-wrap: anywhere; }
+  .pill { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 20px;
+          border: 1px solid currentColor; white-space: nowrap; }
+  .s-done { color: var(--done); } .s-failed { color: var(--failed); }
+  .s-pending { color: var(--muted); }
+  .s-fetching, .s-fetched, .s-enriching { color: var(--busy); }
+  .err { color: var(--failed); font-family: var(--mono); font-size: 12px; }
+  .muted { color: var(--muted); }
+  .banner { padding: 11px 14px; border-radius: 8px; font-size: 13px;
+            border: 1px solid var(--failed); color: var(--failed); margin-bottom: 16px; }
+  code { font-family: var(--mono); font-size: 12px; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Yantra</h1>
+  <p class="sub">Submit a batch of URLs. The API records them and returns immediately —
+     fetching and enrichment happen behind it, so this page polls to watch the work drain.</p>
+
+  <div id="banner"></div>
+
+  <div class="panel">
+    <label for="api">API base URL</label>
+    <input id="api" type="text" placeholder="https://yantra-api.azurewebsites.net">
+
+    <div style="margin-top:16px">
+      <label for="urls">URLs — one per line</label>
+      <textarea id="urls" spellcheck="false"></textarea>
+    </div>
+
+    <div class="row">
+      <button id="go">Submit batch</button>
+      <button id="reset" class="ghost">Reset</button>
+      <span class="hint" id="hint"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="results" hidden>
+    <div class="chips" id="chips"></div>
+    <div class="bar" id="bar"></div>
+    <div class="hint" id="meta"></div>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>URL</th><th>Status</th><th>Retries</th><th>Sentiment</th><th>Summary / error</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    Interactive API docs are at <code id="docs-link">/docs</code> on the same host.
+    First request may take ~30s if the database is resuming from auto-pause.
+  </footer>
+</div>
+
+<script>
+const SAMPLE = [
+  "https://example.com",
+  "https://www.iana.org/help/example-domains",
+  "https://example.com/this-page-does-not-exist",
+  "https://en.wikipedia.org/wiki/Message_queue",
+  "https://en.wikipedia.org/wiki/Exponential_backoff",
+];
+const BUSY = ["fetching", "fetched", "enriching"];
+const ORDER = ["pending", "fetching", "fetched", "enriching", "done", "failed"];
+
+const $ = (id) => document.getElementById(id);
+let timer = null, started = 0;
+
+$("api").value = localStorage.getItem("yantra-api") || "http://127.0.0.1:8000";
+$("urls").value = SAMPLE.join("\n");
+$("api").addEventListener("input", syncDocsLink);
+syncDocsLink();
+
+function syncDocsLink() {
+  $("docs-link").textContent = base() + "/docs";
+}
+function base() {
+  return $("api").value.trim().replace(/\/+$/, "");
+}
+function fail(message) {
+  $("banner").innerHTML = `<div class="banner">${message}</div>`;
+}
+function clearBanner() { $("banner").innerHTML = ""; }
+
+$("reset").addEventListener("click", () => {
+  clearTimeout(timer);
+  $("results").hidden = true;
+  $("urls").value = SAMPLE.join("\n");
+  $("go").disabled = false;
+  $("hint").textContent = "";
+  clearBanner();
+});
+
+$("go").addEventListener("click", submit);
+
+async function submit() {
+  clearBanner();
+  const urls = $("urls").value.split("\n").map((u) => u.trim()).filter(Boolean);
+  if (!urls.length) return fail("Add at least one URL.");
+
+  $("go").disabled = true;
+  $("hint").textContent = "submitting…";
+  started = Date.now();
+
+  let accepted;
+  try {
+    const response = await fetch(base() + "/batches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls }),
+    });
+    if (response.status === 429) {
+      const wait = response.headers.get("Retry-After") || "60";
+      throw new Error(`Rate limited — try again in ${wait}s.`);
+    }
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`API returned ${response.status}: ${detail.slice(0, 300)}`);
+    }
+    accepted = await response.json();
+  } catch (error) {
+    $("go").disabled = false;
+    $("hint").textContent = "";
+    return fail(
+      `${error.message}. If this is a network or CORS error, check the API base URL ` +
+      `is reachable and that CORS_ORIGINS allows this page's origin ` +
+      `(<code>${location.origin}</code>).`
+    );
+  }
+
+  $("results").hidden = false;
+  $("hint").textContent =
+    `batch ${accepted.batch_id} — ${accepted.total_items} items` +
+    (accepted.duplicates_skipped ? `, ${accepted.duplicates_skipped} duplicate(s) skipped` : "");
+  poll(accepted.batch_id);
+}
+
+async function poll(batchId) {
+  let data;
+  try {
+    const response = await fetch(`${base()}/batches/${batchId}?limit=200`);
+    if (!response.ok) throw new Error(`poll failed: ${response.status}`);
+    data = await response.json();
+  } catch (error) {
+    fail(error.message);
+    $("go").disabled = false;
+    return;
+  }
+
+  render(data);
+
+  if (data.complete) {
+    $("go").disabled = false;
+    $("hint").textContent += " — complete";
+    return;
+  }
+  timer = setTimeout(() => poll(batchId), 1000);
+}
+
+function render(data) {
+  const counts = data.counts;
+  const total = ORDER.reduce((sum, key) => sum + (counts[key] || 0), 0) || 1;
+  const busy = BUSY.reduce((sum, key) => sum + (counts[key] || 0), 0);
+
+  const segments = [
+    ["done", counts.done || 0],
+    ["failed", counts.failed || 0],
+    ["busy", busy],
+    ["pending", counts.pending || 0],
+  ];
+  $("bar").innerHTML = segments
+    .filter(([, n]) => n > 0)
+    .map(([name, n]) => `<span class="seg-${name}" style="width:${(n / total) * 100}%"></span>`)
+    .join("");
+
+  $("chips").innerHTML = ORDER.map((key) => {
+    const n = counts[key] || 0;
+    const tone = key === "done" ? "done" : key === "failed" ? "failed"
+      : BUSY.includes(key) ? "busy" : "";
+    return `<span class="chip ${tone} ${n ? "on" : ""}">${key} <b>${n}</b></span>`;
+  }).join("");
+
+  const seconds = ((Date.now() - started) / 1000).toFixed(1);
+  $("meta").textContent = data.complete
+    ? `finished in ${seconds}s`
+    : `polling… ${seconds}s elapsed`;
+
+  $("rows").innerHTML = data.items.map((item) => {
+    const detail = item.status === "failed"
+      ? `<span class="err">${item.error_kind || ""}${item.error_detail ? " — " + escapeHtml(item.error_detail) : ""}</span>`
+      : item.summary
+        ? escapeHtml(item.summary)
+        : `<span class="muted">—</span>`;
+    return `<tr>
+      <td class="url">${escapeHtml(item.url)}</td>
+      <td><span class="pill s-${item.status}">${item.status}</span></td>
+      <td>${item.retries || 0}</td>
+      <td>${item.sentiment || '<span class="muted">—</span>'}</td>
+      <td>${detail}</td>
+    </tr>`;
+  }).join("");
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+$("api").addEventListener("change", () => localStorage.setItem("yantra-api", base()));
+</script>
+</body>
+</html>

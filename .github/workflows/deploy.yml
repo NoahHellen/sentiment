@@ -1,0 +1,118 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Deploy API and update database
+
+on:
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: yantra-api
+  # Matches requires-python in pyproject.toml. App Service must actually offer
+  # this runtime — check with `az webapp list-runtimes --os linux | grep PYTHON`.
+  # Nothing in the code needs 3.14 specifically (StrEnum and datetime.UTC are
+  # 3.11+), so if App Service tops out lower, drop this and requires-python to
+  # match and everything still works.
+  PYTHON_VERSION: '3.14'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Export locked dependencies
+        # App Service builds with pip, not uv, so the lockfile is flattened to a
+        # hash-pinned requirements.txt. uv.lock stays the source of truth.
+        working-directory: backend
+        run: uv export --frozen --no-dev --format requirements-txt -o requirements.txt
+
+      - name: Assemble deployment package
+        # Only the runtime files. pyproject.toml is deliberately left out: Oryx
+        # would try to build it as a package with a build backend it doesn't have.
+        run: |
+          mkdir -p dist
+          cp -r backend/api backend/database backend/services dist/
+          cp backend/requirements.txt dist/
+          find dist -name '__pycache__' -type d -prune -exec rm -rf {} +
+          ls -la dist
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: dist
+
+  migrate:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --frozen --no-dev
+
+      - name: Update database
+        # Equivalent of `dotnet ef database update`. create_all is idempotent, so
+        # re-running is a no-op. Requires the runner's IP to be allowed through
+        # the Azure SQL firewall — see the notes in README.
+        working-directory: backend
+        env:
+          DB_SERVER: ${{ secrets.DB_SERVER }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: uv run python -m database.init_db
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: migrate
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+
+      - name: Deploy to Azure Web App
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: 'Production'
+          package: .
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+          startup-command: 'python -m uvicorn api.main:app --host 0.0.0.0 --port 8000'
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fs "${{ steps.deploy-to-webapp.outputs.webapp-url }}/health/db"; then
+              echo "\nhealthy"; exit 0
+            fi
+            sleep 10
+          done
+          echo "app did not become healthy"; exit 1
