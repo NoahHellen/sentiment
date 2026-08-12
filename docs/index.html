@@ -106,7 +106,18 @@
     </div>
   </div>
 
+  <div class="panel">
+    <label for="lookup">Look up an earlier batch</label>
+    <div class="row" style="margin-top:0">
+      <input id="lookup" type="text" style="flex:1 1 320px"
+             placeholder="paste a batch id, e.g. 0195f3c2-1a4e-7b3d-9f21-6c8ae0d41b77">
+      <button id="fetch-batch" class="ghost">Get results</button>
+    </div>
+    <p class="hint" id="recent"></p>
+  </div>
+
   <div class="panel" id="results" hidden>
+    <div class="hint" id="batch-id"></div>
     <div class="chips" id="chips"></div>
     <div class="bar" id="bar"></div>
     <div class="hint" id="meta"></div>
@@ -140,7 +151,7 @@ const ORDER = ["pending", "fetching", "fetched", "enriching", "done", "failed"];
 // The deployed API. A first-time visitor should be able to hit Submit without
 // changing anything; the field stays editable so you can point it at
 // http://127.0.0.1:8000 during development (that choice is remembered locally).
-const DEFAULT_API = "https://sentiment-api.azurewebsites.net";
+const DEFAULT_API = "https://yantra-api-angwe5hwbehsh6g3.centralus-01.azurewebsites.net";
 
 const $ = (id) => document.getElementById(id);
 let timer = null, started = 0;
@@ -171,6 +182,65 @@ $("reset").addEventListener("click", () => {
 });
 
 $("go").addEventListener("click", submit);
+
+// --- looking up an earlier batch -------------------------------------------
+// Results are durable, so a batch id stays valid indefinitely — you can close
+// the page mid-run and come back to it later.
+
+const RECENT_KEY = "sentiment-recent";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function recentIds() {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function rememberId(id) {
+  const ids = [id, ...recentIds().filter((x) => x !== id)].slice(0, 5);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(ids));
+  showRecent();
+}
+
+function showRecent() {
+  const ids = recentIds();
+  if (!ids.length) {
+    $("recent").textContent =
+      "A batch id stays valid after you leave the page — paste one here to pick it up again.";
+    return;
+  }
+  $("recent").innerHTML =
+    "recent: " +
+    ids.map((id) => `<a href="#" data-id="${id}"><code>${id.slice(0, 8)}…</code></a>`).join(" · ");
+  $("recent").querySelectorAll("a").forEach((link) =>
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      $("lookup").value = link.dataset.id;
+      lookup();
+    })
+  );
+}
+showRecent();
+
+$("fetch-batch").addEventListener("click", lookup);
+$("lookup").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") lookup();
+});
+
+function lookup() {
+  clearBanner();
+  const id = $("lookup").value.trim();
+  if (!UUID_RE.test(id)) {
+    return fail("That doesn't look like a batch id. It's the UUID returned when you submit.");
+  }
+  clearTimeout(timer);
+  started = Date.now();
+  $("results").hidden = false;
+  $("hint").textContent = "";
+  poll(id);
+}
 
 async function submit() {
   clearBanner();
@@ -209,22 +279,31 @@ async function submit() {
 
   $("results").hidden = false;
   $("hint").textContent =
-    `batch ${accepted.batch_id} — ${accepted.total_items} items` +
+    `${accepted.total_items} items accepted` +
     (accepted.duplicates_skipped ? `, ${accepted.duplicates_skipped} duplicate(s) skipped` : "");
+  $("lookup").value = accepted.batch_id;
+  rememberId(accepted.batch_id);
   poll(accepted.batch_id);
 }
 
 async function poll(batchId) {
+  $("batch-id").innerHTML = `batch <code>${batchId}</code>`;
   let data;
   try {
     const response = await fetch(`${base()}/batches/${batchId}?limit=200`);
-    if (!response.ok) throw new Error(`poll failed: ${response.status}`);
+    if (response.status === 404) {
+      $("results").hidden = true;
+      $("go").disabled = false;
+      return fail("No batch with that id on this API. Check the base URL as well as the id.");
+    }
+    if (!response.ok) throw new Error(`request failed: ${response.status}`);
     data = await response.json();
   } catch (error) {
     fail(error.message);
     $("go").disabled = false;
     return;
   }
+  rememberId(batchId);
 
   render(data);
 

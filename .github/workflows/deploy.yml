@@ -117,7 +117,11 @@ jobs:
           slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
-          startup-command: 'python -m uvicorn api.main:app --host 0.0.0.0 --port 8000'
+          # `startup-command` is only accepted with azure/login auth, not with a
+          # publish profile, so the startup command is configured on the app
+          # itself (Configuration -> General settings -> Startup Command):
+          #   python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+          # It persists across deploys, so it is a one-time setup step.
 
       - name: Smoke test
         run: |

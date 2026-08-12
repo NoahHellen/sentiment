@@ -9,7 +9,7 @@ question this repo answers is **where the work lives**, and the answer is: in th
 rows, from the moment the request is accepted.
 
 - **Demo page:** https://\<you\>.github.io/sentiment/
-- **Interactive API docs:** https://\<your-app\>.azurewebsites.net/docs
+- **Interactive API docs:** https://yantra-api-angwe5hwbehsh6g3.centralus-01.azurewebsites.net/docs
 
 ---
 
